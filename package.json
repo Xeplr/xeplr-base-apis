@@ -7,7 +7,7 @@
   "keywords": ["express", "http", "api", "server", "bootstrap", "crud"],
   "author": "xeplr",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/xeplr/xeplr" },
+  "repository": { "type": "git", "url": "https://github.com/Xeplr/xeplr-base-apis" },
   "publishConfig": { "access": "public" },
   "dependencies": {
     "cookie-parser": "^1.4.7",
