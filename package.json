@@ -1,15 +1,35 @@
 {
   "name": "@xeplr/base-apis",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Base API bootstrapper — Express and plain HTTP server factories with middleware injection",
   "main": "index.js",
-  "bin": { "xeplr-check-env": "./bin/check-env.js" },
-  "files": ["index.js", "lib/", "express.js", "http.js", "bin/"],
-  "keywords": ["express", "http", "api", "server", "bootstrap", "crud"],
+  "bin": {
+    "xeplr-check-env": "./bin/check-env.js"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "express.js",
+    "http.js",
+    "bin/"
+  ],
+  "keywords": [
+    "express",
+    "http",
+    "api",
+    "server",
+    "bootstrap",
+    "crud"
+  ],
   "author": "xeplr",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/Xeplr/xeplr-base-apis" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xeplr/xeplr-base-apis"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
@@ -23,6 +43,8 @@
     "multer": "^1.4.5-lts.1"
   },
   "peerDependenciesMeta": {
-    "multer": { "optional": true }
+    "multer": {
+      "optional": true
+    }
   }
 }
