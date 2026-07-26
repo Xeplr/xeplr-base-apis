@@ -3,6 +3,7 @@ var cors = require('cors');
 var cookieParser = require('cookie-parser');
 var path = require('path');
 var { createServer } = require('./lib/server');
+var checkEnv = require('./lib/checkEnv');
 var logs = require('@xeplr/logs');
 
 /**
@@ -12,6 +13,7 @@ var logs = require('@xeplr/logs');
  * @param {number|string} port       - Port or named pipe to listen on
  * @param {string}        appName    - Service name (used for debug namespace and console logs)
  * @param {object}        [options]  - Configuration options
+ * @param {string[]}      [options.requiredEnv]   - Mandatory env var names; missing ones abort startup
  * @param {object}        [options.routes]        - Route map: { '/path': router }
  * @param {Function[]}    [options.middleware]     - Middleware to apply before routes (e.g. authMiddleware)
  * @param {object}        [options.views]         - { engine: 'pug', dir: '/abs/path' }
@@ -36,6 +38,11 @@ var logs = require('@xeplr/logs');
  */
 function createApp(port, appName, options) {
   options = options || {};
+
+  // Fail fast if the app's mandatory env vars are missing (same check the
+  // xeplr-check-env build step runs — one implementation).
+  if (options.requiredEnv) checkEnv(options.requiredEnv, { appName: appName });
+
   var app = express();
 
   // ── Logger ──
@@ -112,6 +119,16 @@ function createApp(port, appName, options) {
       });
       res.json(files.length === 1 ? files[0] : files);
     });
+  }
+
+  // ── SSE endpoint (server→client push) ──
+  // Enable with `sse: true` for the default '/events' path, or
+  // `sse: { path: '/api/events' }` for a custom one. Mounts AFTER the
+  // middleware chain, so any auth middleware you passed in still applies.
+  if (options.sse) {
+    var sseCfg = options.sse === true ? {} : options.sse;
+    var ssePath = sseCfg.path || '/events';
+    app.get(ssePath, require('./lib/sse').handler);
   }
 
   // ── Routes ──
