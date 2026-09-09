@@ -9,8 +9,8 @@ The service layer for a xeplr app: `createApp` wires an Express service, and
 1. Install `@xeplr/base-apis` (add `@xeplr/db`, `@xeplr/auth`, `dotenv`).
 2. Create a file env.required.js
 3. For anything
-3. Each API is by default guarded through Auth System. But you will need following variables in your env file for AUTH: AUTH_DB_NAME, AUTH_DB_CONNECTION_INFO_ENCRYPTED, AUTH_EXT_MIGRATIONS_DIR, AUTH_PORT. 
-4. The AUTH_EXT_MIGRATIONS_DIR is y
+3. Each API is by default guarded through Auth System. But you will need following variables in your env file for AUTH: AUTH_DB_NAME, AUTH_DB_CONNECTION_INFO_ENCRYPTED, XEPLR_AUTH_MIGRATIONS, AUTH_PORT. 
+4. The XEPLR_AUTH_MIGRATIONS is y
 
 Example:
 
