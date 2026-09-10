@@ -78,6 +78,13 @@ var deptRoutes = genericRoute(
 var port = process.env.PORT || 3000;
 
 createApp(port, 'department-api', {
+  // Every route requires a valid token. Nothing is passed here because that
+  // is already the default — createApp validates against AUTH_URL and refuses
+  // to boot if it is not set, so an app cannot ship open by forgetting to say
+  // anything.
+  //
+  // To open a few paths:      auth: { publicPaths: ['/public/'] }
+  // To open the whole thing:  auth: false   — and mean it.
   routes: {
     '/api/departments': deptRoutes
   }

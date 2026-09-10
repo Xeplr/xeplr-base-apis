@@ -15,7 +15,16 @@ var logs = require('@xeplr/logs');
  * @param {object}        [options]  - Configuration options
  * @param {string[]}      [options.requiredEnv]   - Mandatory env var names; missing ones abort startup
  * @param {object}        [options.routes]        - Route map: { '/path': router }
- * @param {Function[]}    [options.middleware]     - Middleware to apply before routes (e.g. authMiddleware)
+ * @param {object|false}  [options.auth]          - THE GATE, ON BY DEFAULT.
+ *   Omit it and every route requires a valid token, validated by asking the
+ *   auth service at AUTH_URL. Boot fails if that address is not set, rather
+ *   than serving unauthenticated.
+ *     { url }            auth service base URL (default: process.env.AUTH_URL)
+ *     { publicPaths }    path prefixes that skip the gate, e.g. ['/public/']
+ *     { cacheSeconds }   per-process cache of validated tokens (default 5, 0 off)
+ *     { middleware }     supply your own gate instead of the HTTP one
+ *     false              this service is public ON PURPOSE
+ * @param {Function[]}    [options.middleware]     - Middleware to apply before routes (runs AFTER the auth gate)
  * @param {object}        [options.views]         - { engine: 'pug', dir: '/abs/path' }
  * @param {string}        [options.staticDir]     - Path to static files directory
  * @param {string}        [options.corsOptions]   - Custom CORS options (default: allow all)
@@ -82,6 +91,50 @@ function createApp(port, appName, options) {
     var serveRoute = options.upload.serveRoute || '/uploads';
     var destination = path.resolve(options.upload.destination || process.env.UPLOAD_DIR || './uploads');
     app.use(serveRoute, express.static(destination));
+  }
+
+  // ── Auth gate ──
+  //
+  // ON BY DEFAULT. A service that forgets to configure auth must not answer
+  // as though it has none — that failure is silent, boots clean, passes every
+  // health check, and is indistinguishable from a working service until
+  // somebody notices the whole API is public.
+  //
+  // Every app answers the question, one of four ways:
+  //   auth omitted             → gated, via AUTH_URL from the environment
+  //   auth: { url, ... }       → gated, configured here
+  //   auth: { middleware: fn } → gated by a gate you supply. This is how
+  //                              @xeplr/auth's own server gates itself: it
+  //                              cannot ask itself over HTTP.
+  //   auth: false              → public, ON PURPOSE and visible in the diff
+  //
+  // BEFORE options.middleware, so anything injected below — mtMiddleware and
+  // friends — runs with req.user already established.
+  if (options.auth !== false) {
+    var authCfg = (options.auth === true || options.auth == null) ? {} : options.auth;
+
+    if (authCfg.middleware) {
+      app.use(authCfg.middleware);
+    } else {
+      var authUrl = authCfg.url || process.env.AUTH_URL;
+      if (!authUrl) {
+        // Refuse, naming the variable. The alternative is guessing an address
+        // — and a wrong-but-present one either 503s everything or points at
+        // something that answers 200 to anything.
+        throw new Error(
+          '[' + appName + '] createApp: auth is on by default and needs the auth service address.\n' +
+          '  Set AUTH_URL (e.g. http://localhost:19141), or pass options.auth = { url },\n' +
+          '  or pass options.auth = false if this service is genuinely public.'
+        );
+      }
+      app.use(require('./lib/remoteAuth')({
+        url: authUrl,
+        publicPaths: authCfg.publicPaths,
+        cacheSeconds: authCfg.cacheSeconds,
+        endpoint: authCfg.endpoint,
+        timeoutMs: authCfg.timeoutMs
+      }));
+    }
   }
 
   // ── Injected middleware (auth, etc.) ──

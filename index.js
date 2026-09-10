@@ -3,6 +3,7 @@ module.exports = {
   createHttpServer: require('./http'),
   checkEnv: require('./lib/checkEnv'),
   genericRoute: require('./lib/genericRoute'),
+  remoteAuth: require('./lib/remoteAuth'),
   genericController: require('./lib/genericController'),
   uploadRoute: require('./lib/uploadRoute'),
   runCluster: require('./lib/cluster').runCluster,
