@@ -114,18 +114,21 @@ createApp(3000, 'myapp', {
 
 Why on by default: a service that forgot to configure auth used to boot clean, pass every health check, and serve every route to anybody — nothing distinguished it from a working one.
 
-`remoteAuth` sends the caller's `Authorization: Bearer …` to `url + endpoint` (`/auth/api/me`) and puts the answer's `user` and `access` on `req.user` / `req.access`.
+`remoteAuth` sends the caller's `Authorization: Bearer …` **and the request it is serving** (`x-verify-method`, `x-verify-path`) to `url + endpoint` (`/auth/api/verify`). Auth answers who the caller is and whether they may call that API, so **every request is checked for access, not only for a signed-in token**; the answer's `user` and `access` go on `req.user` / `req.access`. See `@xeplr/auth`'s "Every request is checked".
 
 | situation | response |
 |---|---|
 | path starts with a `publicPaths` entry | skipped |
 | no `Bearer` token | 401 `No token provided` |
-| auth answers 401 / 403 | same status, `Invalid or expired token` |
+| auth answers `403` with `code` `DISABLED` or `HIDDEN` | 403 with that `code`: signed in, but not allowed this API |
+| auth answers 401 / other 403 | same status, `Invalid or expired token` |
+| auth answers 200 **without** `state: 'enabled'` (an older auth, or an `endpoint` such as `/me` that only says who the caller is) | **503**: "did not say no" is not "said yes" |
 | auth unreachable, times out (`timeoutMs`, 5000), answers anything else, or answers non-JSON | **503 `Authentication service unavailable` — never let through** |
 
 - **Validated over HTTP, not in-process** — so a service needs no `@xeplr/auth` dependency (it would be a cycle), no JWT secret and no Redis. The cost is a hop per request.
-- **`cacheSeconds` (default 5)** caches a validated token per process; a revoked token keeps working that long here. `0` checks every request.
-- **`X-New-Token` is forwarded** (with `Access-Control-Expose-Headers`) when the auth service slides a token, and that answer is **not cached** — otherwise the next requests would be answered from memory without telling the client to switch, and it would be logged out when the window closed.
+- **A burst makes one call.** Requests with the same token, method and path that arrive while a check is on its way share its answer: ten at once, one call to auth. This holds with `cacheSeconds: 0` too.
+- **`cacheSeconds` (default 5)** caches each answer (allowed or refused) per token, method and path, per process; a revoked token or a changed mapping takes that long to reach here. `0` checks every request.
+- **`X-New-Token` is forwarded** (with `Access-Control-Expose-Headers`) when the auth service slides a token, to every request in the burst that shared the check, so none is rejected because the token changed. That answer is **not cached** — otherwise the next requests would be answered from memory without telling the client to switch, and it would be logged out when the window closed.
 
 ### Uploads
 
