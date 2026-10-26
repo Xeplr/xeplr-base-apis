@@ -120,7 +120,7 @@ Why on by default: a service that forgot to configure auth used to boot clean, p
 |---|---|
 | path starts with a `publicPaths` entry | skipped |
 | no `Bearer` token | 401 `No token provided` |
-| auth answers `403` with `code` `DISABLED` or `HIDDEN` | 403 with that `code`: signed in, but not allowed this API |
+| auth answers `403` with `code` `DISABLED`, `HIDDEN` or `UNLICENSED` | 403 with that `code`: signed in, but not allowed this API (`UNLICENSED`: its module is not in the caller's licence) |
 | auth answers 401 / other 403 | same status, `Invalid or expired token` |
 | auth answers 200 **without** `state: 'enabled'` (an older auth, or an `endpoint` such as `/me` that only says who the caller is) | **503**: "did not say no" is not "said yes" |
 | auth unreachable, times out (`timeoutMs`, 5000), answers anything else, or answers non-JSON | **503 `Authentication service unavailable` — never let through** |

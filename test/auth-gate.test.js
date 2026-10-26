@@ -362,7 +362,7 @@ test('the gate names the request it is serving', async function () {
   }
 });
 
-test('disabled and hidden are refused with their codes', async function () {
+test('disabled, hidden and unlicensed are refused with their codes', async function () {
   var code = 'DISABLED';
   var auth = await startAccessAuth(function (req, res) { res.status(403).json({ error: 'no', code: code }); });
   var port = nextPort();
@@ -375,6 +375,10 @@ test('disabled and hidden are refused with their codes', async function () {
     res = await fetch('http://127.0.0.1:' + port + '/', { headers: { authorization: 'Bearer ' + VALID } });
     assert.strictEqual(res.status, 403);
     assert.strictEqual((await res.json()).code, 'HIDDEN');
+    code = 'UNLICENSED';
+    res = await fetch('http://127.0.0.1:' + port + '/', { headers: { authorization: 'Bearer ' + VALID } });
+    assert.strictEqual(res.status, 403);
+    assert.deepStrictEqual(await res.json(), { error: 'no', code: 'UNLICENSED' }, 'passed on, not relabelled as a bad token');
   } finally {
     built.server.close();
     await auth.close();
