@@ -1,6 +1,6 @@
 {
   "name": "@xeplr/base-apis",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "Base API bootstrapper — Express and plain HTTP server factories with middleware injection",
   "main": "index.js",
   "bin": {
