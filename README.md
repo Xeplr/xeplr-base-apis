@@ -203,7 +203,7 @@ Responses use `@xeplr/utils`' shape: `{ code, message, error, dataArray, updated
 
 | error | status |
 |---|---|
-| `ValidationError` | 422 |
+| `ValidationError` | 422. jsonSchema's answers `Validation failed` with `fields`; one a model hook throws with its own `type` (e.g. a licence limit) answers its own `message` |
 | `UniqueViolationError`, `ForeignKeyViolationError` | 409 |
 | `NotNullViolationError` (`<column> is required`), `CheckViolationError`, `DataError` | 400 |
 | `NotFoundError` | 404 |
