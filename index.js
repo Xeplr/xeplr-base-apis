@@ -15,6 +15,8 @@ module.exports = {
   remoteAuth: require('./lib/remoteAuth'),
   genericController: require('./lib/genericController'),
   uploadRoute: require('./lib/uploadRoute'),
+  // Serve a stored file back, only from the requesting tenant's own folder.
+  sendTenantFile: require('./lib/sendTenantFile'),
   runCluster: require('./lib/cluster').runCluster,
   broadcast: require('./lib/cluster').broadcast,
   isPrimary: require('./lib/cluster').isPrimary,
