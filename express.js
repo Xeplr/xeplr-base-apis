@@ -37,12 +37,12 @@ var logs = require('@xeplr/logs');
  * @param {object}        [options.log.emailService]           - Email service instance
  * @param {object}        [options.upload]        - File upload config
  * @param {string}        [options.upload.route='/internal/upload'] - Upload endpoint path
- * @param {string}        [options.upload.destination='./uploads']  - Storage directory
+ * @param {string}        [options.upload.destination]              - A folder of the app's own; default: the requester's own uploads/ under XEPLR_DATA_DIR
  * @param {string[]}      [options.upload.allowedTypes=['*']]       - MIME types
  * @param {number}        [options.upload.maxSize=5242880]          - Max file size in bytes
  * @param {string}        [options.upload.fieldName='file']         - Form field name
  * @param {number}        [options.upload.maxFiles=10]              - Max files per request
- * @param {string}        [options.upload.serveRoute='/uploads']    - Static serve path for uploaded files
+ * @param {string}        [options.upload.serveRoute='/uploads']    - Where an upload is fetched back, signed in, from the requester's own uploads/ (default destination only)
  * @returns {{ app: Express, server: http.Server }}
  */
 function createApp(port, appName, options) {
@@ -84,13 +84,6 @@ function createApp(port, appName, options) {
   // ── Static files ──
   if (options.staticDir) {
     app.use(express.static(options.staticDir));
-  }
-
-  // ── File upload (static serve before auth, upload route after auth) ──
-  if (options.upload) {
-    var serveRoute = options.upload.serveRoute || '/uploads';
-    var destination = path.resolve(options.upload.destination || process.env.UPLOAD_DIR || './uploads');
-    app.use(serveRoute, express.static(destination));
   }
 
   // ── Auth gate ──
@@ -146,7 +139,10 @@ function createApp(port, appName, options) {
   if (options.upload) {
     var FileUploader = require('@xeplr/utils').FileUploader;
     var uploadCfg = options.upload;
-    var destination = path.resolve(uploadCfg.destination || process.env.UPLOAD_DIR || './uploads');
+    // Named: that folder. Not named: the requesting tenant's own uploads/
+    // under XEPLR_DATA_DIR, asked per upload — never one folder for every
+    // company (lib/uploadRoute.js tenantUploads).
+    var destination = uploadCfg.destination ? path.resolve(uploadCfg.destination) : require('./lib/uploadRoute').tenantUploads;
     var uploader = new FileUploader({
       auth: uploadCfg.auth || null,
       allowedTypes: uploadCfg.allowedTypes || ['*'],
@@ -157,6 +153,17 @@ function createApp(port, appName, options) {
     var uploadRoute = uploadCfg.route || '/internal/upload';
     var fieldName = uploadCfg.fieldName || 'file';
     var maxFiles = uploadCfg.maxFiles || 10;
+
+    // SERVED BACK SIGNED IN, from the requester's own uploads/ only. This was
+    // express.static over the whole folder, BEFORE the gate: every company's
+    // files to anyone who had a name. Now behind the gate (which checks the
+    // caller belongs to the company named) and read in that company's folder.
+    // With a folder of the app's own (`destination`), the app serves it.
+    if (!uploadCfg.destination) {
+      var serveRoute = uploadCfg.serveRoute || '/uploads';
+      var sendTenantFile = require('./lib/sendTenantFile');
+      app.get(serveRoute + '/:name', function(req, res) { sendTenantFile(res, 'uploads/' + req.params.name); });
+    }
 
     app.post(uploadRoute, uploader.array(fieldName, maxFiles), function(req, res) {
       if (!req.files || req.files.length === 0) {

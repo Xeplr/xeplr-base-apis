@@ -67,7 +67,8 @@ createApp(3000, 'myapp', {
 | `remoteAuth(config)` | the default gate, as middleware |
 | `gateRequiredEnv` | `['AUTH_URL']` |
 | `checkEnv(names, options)` | missing-variable check |
-| `uploadRoute(options)` | a standalone "receive a file, return its path" router |
+| `uploadRoute(options)` | a standalone "receive a file, return its path" router — into the requester's own `uploads/` unless told otherwise |
+| `sendTenantFile(res, name, { download? })` | serve a stored file back, only from the requesting tenant's own folder (404 another company's name, 400 a path out, 400 no tenant) |
 | `sse` | `{ handler, createHandler, publish, defaultAuthorizeTopics }` |
 | `runCluster(options)`, `broadcast(msg)`, `isPrimary()`, `isWorker()` | Node cluster helpers |
 | `createHttpServer` | `{ init(port, appName, handler) }` — a plain `http.Server` |
@@ -116,24 +117,27 @@ Why on by default: a service that forgot to configure auth used to boot clean, p
 
 `remoteAuth` sends the caller's `Authorization: Bearer …` **and the request it is serving** (`x-verify-method`, `x-verify-path`) to `url + endpoint` (`/auth/api/verify`). Auth answers who the caller is and whether they may call that API, so **every request is checked for access, not only for a signed-in token**; the answer's `user` and `access` go on `req.user` / `req.access`. See `@xeplr/auth`'s "Every request is checked".
 
+**And whether the caller belongs to the company and workspace the request names.** When the app registered tenancy (`@xeplr/db`'s `registerMTs`) and the request carries those headers, the gate sends them as `x-verify-tenant` (`{"l1":"<company>","l2":"<workspace>"}`), and auth refuses a caller without a membership for each (`403 NOT_A_MEMBER`, Super Admin excepted) — before the app sees the request. So `mtMiddleware`'s tenant, which every query and every file path (`@xeplr/db`'s `dataDir`) reads, can be trusted on every request of every app, and no route has to add `mtMembershipMiddleware` itself. An auth that does not answer `tenant: 'checked'` (older than `@xeplr/auth` 1.4) is refused (503), never taken as a member.
+
 | situation | response |
 |---|---|
 | path starts with a `publicPaths` entry | skipped |
 | no `Bearer` token | 401 `No token provided` |
-| auth answers `403` with `code` `DISABLED`, `HIDDEN` or `UNLICENSED` | 403 with that `code`: signed in, but not allowed this API (`UNLICENSED`: its module is not in the caller's licence) |
+| auth answers `403` with `code` `DISABLED`, `HIDDEN`, `UNLICENSED` or `NOT_A_MEMBER` | 403 with that `code`: signed in, but not allowed this API (`UNLICENSED`: its module is not in the caller's licence; `NOT_A_MEMBER`: not in the company or workspace the request names) |
+| the request names a company, and auth answers without `tenant: 'checked'` | **503**: an auth that ignored the question is not an answer |
 | auth answers 401 / other 403 | same status, `Invalid or expired token` |
 | auth answers 200 **without** `state: 'enabled'` (an older auth, or an `endpoint` such as `/me` that only says who the caller is) | **503**: "did not say no" is not "said yes" |
 | auth unreachable, times out (`timeoutMs`, 5000), answers anything else, or answers non-JSON | **503 `Authentication service unavailable` — never let through** |
 
 - **Validated over HTTP, not in-process** — so a service needs no `@xeplr/auth` dependency (it would be a cycle), no JWT secret and no Redis. The cost is a hop per request.
 - **A burst makes one call.** Requests with the same token, method and path that arrive while a check is on its way share its answer: ten at once, one call to auth. This holds with `cacheSeconds: 0` too.
-- **`cacheSeconds` (default 5)** caches each answer (allowed or refused) per token, method and path, per process; a revoked token or a changed mapping takes that long to reach here. `0` checks every request.
+- **`cacheSeconds` (default 5)** caches each answer (allowed or refused) per token, method, path **and company named**, per process — another company with the same token is asked about afresh; a revoked token or a changed mapping takes that long to reach here. `0` checks every request.
 - **`X-New-Token` is forwarded** (with `Access-Control-Expose-Headers`) when the auth service slides a token, to every request in the burst that shared the check, so none is rejected because the token changed. That answer is **not cached** — otherwise the next requests would be answered from memory without telling the client to switch, and it would be logged out when the window closed.
 
 ### Uploads
 
 ```js
-createApp(port, 'myapp', { upload: { destination: './uploads', allowedTypes: ['image/*'], maxSize: 2e6 } })
+createApp(port, 'myapp', { upload: { allowedTypes: ['image/*'], maxSize: 2e6 } })
 ```
 
 | option | default |
@@ -141,15 +145,19 @@ createApp(port, 'myapp', { upload: { destination: './uploads', allowedTypes: ['i
 | `route` | `/internal/upload` — `POST`, multipart, behind the gate |
 | `fieldName` | `file` |
 | `maxFiles` | `10` |
-| `destination` | `UPLOAD_DIR`, else `./uploads` |
+| `destination` | **the requester's own `uploads/`** under `XEPLR_DATA_DIR` (`@xeplr/db`'s `dataDir`), asked per upload — never one folder for every company. A request with no tenant is refused. A folder named here is the app's own, and the app serves it |
 | `allowedTypes` | `['*']` |
 | `maxSize` | `5242880` (5 MB) |
-| `serveRoute` | `/uploads` — static, **before the gate** |
+| `serveRoute` | `/uploads` — `GET /uploads/:name`, **behind the gate**, from the requester's own `uploads/` (`sendTenantFile`). It used to be `express.static` over the whole folder before the gate: every company's files to anyone with a name. Only with the default `destination` |
 | `auth` | a function passed to `@xeplr/utils`' `FileUploader` |
 
 Returns `{ filename, originalName, size, mimetype }`, or an array of them for several files; 400 when none arrived. Files are stored under a generated id plus the original extension.
 
-`uploadRoute({ destination, maxSize, allowedTypes, fieldName, auth })` is the same as a router of its own: `POST /` (single file) → `{ filePath, fileName, originalName, size, mimetype }`.
+`uploadRoute({ destination, maxSize, allowedTypes, fieldName, auth })` is the same as a router of its own: `POST /` (single file) → `{ filePath, fileName, originalName, size, mimetype }`. With no `destination`, into the requester's own `uploads/`.
+
+**Serving a stored file back:** `sendTenantFile(res, 'uploads/' + name)` — the one way. It reads only the requesting tenant's own folder: another company's name is 404, a path out (`../`, a link, a full path elsewhere) is 400, a request with no tenant is 400. Never `express.static` over a shared folder.
+
+**From 2.x (3.0.0):** an upload with no folder named goes into the requester's own folder (it was `UPLOAD_DIR` / `./uploads`, shared), and `createApp`'s uploads are no longer served before the gate. Set `XEPLR_DATA_DIR` (`@xeplr/db`'s `dataRequiredEnv`) and register the application (`registerApplication`).
 
 ## genericRoute
 
@@ -266,7 +274,7 @@ broadcast({ type: 'cache-clear' })   // from a worker: relayed to every other wo
 | variable | |
 |---|---|
 | `AUTH_URL` | the auth service base URL — **required** for the default gate |
-| `UPLOAD_DIR` | upload destination when `upload.destination` is not given |
+| `XEPLR_DATA_DIR` | the root of every tenant's files: an upload with no folder named goes in the requester's `uploads/` under it (`@xeplr/db` `dataRequiredEnv`) |
 | `NODE_ENV` | anything but `production` puts the logger in dev mode |
 
 ## Tests
@@ -275,7 +283,7 @@ broadcast({ type: 'cache-clear' })   // from a worker: relayed to every other wo
 npm test
 ```
 
-The auth gate against a stand-in auth service (refusal to boot, 401 / 503, public paths, caching, `X-New-Token`), SSE publish and subscribe, and ticket-authorised SSE.
+The auth gate against a stand-in auth service (refusal to boot, 401 / 503, public paths, caching, `X-New-Token`), SSE publish and subscribe, and ticket-authorised SSE. `tenant-gate.test.js`: the gate naming the company and workspace, refusing a non-member before the app sees the request, refusing an auth that did not check, caching per company; a real multipart upload landing in the company's own `uploads/` and served back only to it; `createApp`'s uploads no longer public; `sendTenantFile` refusing another company's name, a path out and no tenant.
 
 ## License
 
