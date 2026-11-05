@@ -82,6 +82,7 @@ createApp(3000, 'myapp', {
 | `requiredEnv` | variable names; any missing → message and `process.exit(1)` before anything starts |
 | `auth` | the gate — see below. **On when omitted** |
 | `middleware` | array, mounted after the gate |
+| `rawBodyPaths` | path prefixes whose body is also kept byte for byte as `req.rawBody` (a `Buffer`) — see below |
 | `routes` | `{ '/path': router }` |
 | `log` | `@xeplr/logs` settings (`logDir` `'./logs'`, `fatalThreshold`, `emailThreshold`, `emailTo`, `emailService`), or `false` |
 | `corsOptions` | passed to `cors` (default: allow all) |
@@ -94,7 +95,7 @@ createApp(3000, 'myapp', {
 ### Order of the middleware
 
 1. request logger (`@xeplr/logs` — sets `req.log`), unless `log: false`
-2. view engine, `cors`, `express.json`, `express.urlencoded`, `cookie-parser`
+2. view engine, `cors`, `express.json`, `express.urlencoded` (and the raw body, for `rawBodyPaths`), `cookie-parser`
 3. `staticDir`
 4. uploaded files served at `upload.serveRoute` — **before the gate, so public**
 5. **the auth gate**
@@ -103,6 +104,23 @@ createApp(3000, 'myapp', {
 8. SSE endpoint
 9. `options.routes`
 10. 404, then the error handler
+
+### Webhooks: the raw body
+
+A payment provider (Stripe, Razorpay…) signs **the bytes it sent**, and `req.body` is those bytes parsed. `JSON.stringify(req.body)` is not them — spacing, key order and `1.50` vs `1.5` all change — so a signature checked against it fails, or worse, gets "fixed" by skipping the check. Name the webhook paths and they also get the bytes:
+
+```js
+createApp(3000, 'myapp', {
+  auth: { publicPaths: ['/billing/webhook/'] },   // a provider cannot sign in
+  rawBodyPaths: ['/billing/webhook/'],           // so it must be checked by signature, over these
+  routes
+})
+// in the route: hmac(secret).update(req.rawBody) === req.headers['x-signature']
+```
+
+- JSON and form bodies are still parsed into `req.body`; any other type (`text/plain`, `application/octet-stream`) is read only into `req.rawBody`.
+- Only the paths named: every other request keeps just its parsed body, not a second copy.
+- A prefix, matched like `publicPaths`.
 
 ### The auth gate
 
@@ -283,7 +301,7 @@ broadcast({ type: 'cache-clear' })   // from a worker: relayed to every other wo
 npm test
 ```
 
-The auth gate against a stand-in auth service (refusal to boot, 401 / 503, public paths, caching, `X-New-Token`), SSE publish and subscribe, and ticket-authorised SSE. `tenant-gate.test.js`: the gate naming the company and workspace, refusing a non-member before the app sees the request, refusing an auth that did not check, caching per company; a real multipart upload landing in the company's own `uploads/` and served back only to it; `createApp`'s uploads no longer public; `sendTenantFile` refusing another company's name, a path out and no tenant.
+The auth gate against a stand-in auth service (refusal to boot, 401 / 503, public paths, caching, `X-New-Token`), SSE publish and subscribe, and ticket-authorised SSE. `tenant-gate.test.js`: the gate naming the company and workspace, refusing a non-member before the app sees the request, refusing an auth that did not check, caching per company; a real multipart upload landing in the company's own `uploads/` and served back only to it; `createApp`'s uploads no longer public; `sendTenantFile` refusing another company's name, a path out and no tenant. `raw-body.test.js`: a `rawBodyPaths` route gets the exact bytes a provider signed (JSON, form and other types), and every other path does not.
 
 ## License
 

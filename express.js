@@ -25,6 +25,9 @@ var logs = require('@xeplr/logs');
  *     { middleware }     supply your own gate instead of the HTTP one
  *     false              this service is public ON PURPOSE
  * @param {Function[]}    [options.middleware]     - Middleware to apply before routes (runs AFTER the auth gate)
+ * @param {string[]}      [options.rawBodyPaths]  - Path prefixes whose body is also kept, byte for byte, as
+ *   req.rawBody (a Buffer) — what a webhook's signature is computed over. JSON and form
+ *   bodies are still parsed into req.body; any other type is read only as req.rawBody.
  * @param {object}        [options.views]         - { engine: 'pug', dir: '/abs/path' }
  * @param {string}        [options.staticDir]     - Path to static files directory
  * @param {string}        [options.corsOptions]   - Custom CORS options (default: allow all)
@@ -77,8 +80,32 @@ function createApp(port, appName, options) {
 
   // ── Standard middleware ──
   app.use(cors(options.corsOptions));
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: false }));
+  // A webhook signs the bytes it sent, and req.body is those bytes parsed:
+  // JSON.stringify(req.body) is not them (spacing, key order, number
+  // formatting). So a rawBodyPaths route also gets the bytes, as req.rawBody.
+  // Only for the paths named — every other request keeps just its parsed body.
+  var rawBodyPaths = options.rawBodyPaths || [];
+  function keepsRaw(req) {
+    for (var i = 0; i < rawBodyPaths.length; i++) {
+      if (req.path === rawBodyPaths[i] || req.path.indexOf(rawBodyPaths[i]) === 0) return true;
+    }
+    return false;
+  }
+  function keepRaw(req, res, buf) { if (keepsRaw(req)) req.rawBody = buf; }
+  var verify = rawBodyPaths.length ? keepRaw : undefined;
+  app.use(express.json({ verify: verify }));
+  app.use(express.urlencoded({ extended: false, verify: verify }));
+  if (rawBodyPaths.length) {
+    // A type neither parser reads (text/plain, application/octet-stream…).
+    var rawParser = express.raw({ type: function () { return true; } });
+    app.use(function (req, res, next) {
+      if (req.rawBody || !keepsRaw(req)) return next();
+      rawParser(req, res, function (err) {
+        if (!err && Buffer.isBuffer(req.body)) req.rawBody = req.body;
+        next(err);
+      });
+    });
+  }
   app.use(cookieParser());
 
   // ── Static files ──
