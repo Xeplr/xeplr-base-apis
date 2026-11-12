@@ -11,6 +11,8 @@ module.exports = {
   createApp: require('./express'),
   createHttpServer: require('./http'),
   checkEnv: require('./lib/checkEnv'),
+  // A route's own permission (req.access.apis must name it), after the gate.
+  requireApi: require('./lib/requireApi'),
   genericRoute: require('./lib/genericRoute'),
   remoteAuth: require('./lib/remoteAuth'),
   genericController: require('./lib/genericController'),
