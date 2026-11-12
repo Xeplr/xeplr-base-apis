@@ -67,6 +67,7 @@ createApp(3000, 'myapp', {
 | `remoteAuth(config)` | the default gate, as middleware |
 | `gateRequiredEnv` | `['AUTH_URL']` |
 | `checkEnv(names, options)` | missing-variable check |
+| `requireApi(name)` | a route's own permission, after the gate: `req.access.apis` must name the route's `apis` row, or 403 `{ error: 'Access denied: <name>' }`. No access information on the request (mounted outside the gate) is refused too |
 | `uploadRoute(options)` | a standalone "receive a file, return its path" router — into the requester's own `uploads/` unless told otherwise |
 | `sendTenantFile(res, name, { download? })` | serve a stored file back, only from the requesting tenant's own folder (404 another company's name, 400 a path out, 400 no tenant) |
 | `sse` | `{ handler, createHandler, publish, defaultAuthorizeTopics }` |
