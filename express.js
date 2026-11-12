@@ -14,8 +14,6 @@ var logs = require('@xeplr/logs');
  * @param {string}        appName    - Service name (used for debug namespace and console logs)
  * @param {object}        [options]  - Configuration options
  * @param {string[]}      [options.requiredEnv]   - Mandatory env var names; missing ones abort startup
- * @param {string}        [options.host]          - The address to listen on, e.g. '127.0.0.1' for a service only a
- *   proxy on the same machine may reach. Default: every address (Node's own default).
  * @param {object}        [options.routes]        - Route map: { '/path': router }
  * @param {object|false}  [options.auth]          - THE GATE, ON BY DEFAULT.
  *   Omit it and every route requires a valid token, validated by asking the
@@ -253,7 +251,7 @@ function createApp(port, appName, options) {
 
   // ── Start HTTP server ──
   app.set('port', port);
-  var server = createServer(app, port, appName, options.host);
+  var server = createServer(app, port, appName);
 
   return { app: app, server: server };
 }
