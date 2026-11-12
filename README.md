@@ -80,6 +80,7 @@ createApp(3000, 'myapp', {
 | option | |
 |---|---|
 | `requiredEnv` | variable names; any missing → message and `process.exit(1)` before anything starts |
+| `host` | the address to listen on, e.g. `'127.0.0.1'` for a service that only nginx on the same machine may reach. Default: every address |
 | `auth` | the gate — see below. **On when omitted** |
 | `middleware` | array, mounted after the gate |
 | `rawBodyPaths` | path prefixes whose body is also kept byte for byte as `req.rawBody` (a `Buffer`) — see below |
